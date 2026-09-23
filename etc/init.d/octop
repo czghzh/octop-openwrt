@@ -25,6 +25,8 @@ start_service() {
 	procd_set_param command /bin/sh "$PROG"
 	# 输出重定向到日志文件（日志量大，避免刷爆 logd 的环形缓冲）
 	procd_set_param env OCTOP_LOG="$LOGFILE"
+	# pid 文件由 procd 维护（重启后自动更新，不会残留过期 PID）
+	procd_set_param pidfile "$PIDFILE"
 	# 崩溃自动重启：3600 秒内最多 5 次，每次间隔 5 秒
 	procd_set_param respawn 3600 5 5
 	procd_set_param stdout 0

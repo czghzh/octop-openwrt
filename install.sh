@@ -422,14 +422,17 @@ else
 	say "     tail -50 $OCTOP_DATA/octop-server.log"
 fi
 
-# 记录 PID
-for _p in /proc/[0-9]*; do
-	_pid=${_p#/proc/}
-	_cmd=$(tr '\0' ' ' < "$_p/cmdline" 2>/dev/null) || continue
-	case "$_cmd" in
-		python3*-m\ octop\ run*) echo "$_pid" > "$OCTOP_DATA/octop-server.pid" ;;
-	esac
-done
+# PID 文件：装了 procd 时由 procd 维护（procd_set_param pidfile），
+#   重启后会自动更新，不会残留过期 PID；只有手动模式才在这里记录。
+if [ "$ENABLE_OK" != "1" ]; then
+	for _p in /proc/[0-9]*; do
+		_pid=${_p#/proc/}
+		_cmd=$(tr '\0' ' ' < "$_p/cmdline" 2>/dev/null) || continue
+		case "$_cmd" in
+			python3*-m\ octop\ run*) echo "$_pid" > "$OCTOP_DATA/octop-server.pid" ;;
+		esac
+	done
+fi
 
 # ------------------------------ 完成 ----------------------------------------
 
