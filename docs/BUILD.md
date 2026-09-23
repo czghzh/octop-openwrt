@@ -61,7 +61,11 @@ mkdir -p wheels work build
 用与**目标设备一致**的平台参数解析，产出 `pkgs.tsv`：
 
 ```sh
-python3 tools/resolve-full.py 'octop[all]' 3.14 > pkgs.tsv
+python3 tools/resolve-full.py 'octop[all]' > tools/data/pkgs.tsv
+
+# 从清单拆出两类（fetch 脚本会读它们）
+awk -F'\t' '$3=="OTHER" {print $1"=="$2}' tools/data/pkgs.tsv > tools/data/needs-musl.txt
+awk -F'\t' '$3=="pure"  {print $1"=="$2}' tools/data/pkgs.tsv > tools/data/pure-list.txt
 ```
 
 关键点：必须指定 `--platform musllinux_1_2_aarch64 --only-binary=:all:`，
@@ -98,8 +102,8 @@ PY
 grep -P '\twheel\t' pkgs.tsv | cut -f1 > want-all.txt
 
 # 3.2 分两批：含 C/Rust 扩展的（需平台参数）与纯 Python 的
-sh tools/fetch-musl-wheels.sh want-all.txt ./wheels-musl
-sh tools/fetch-pure-wheels.sh want-all.txt ./wheels-pure
+sh tools/fetch-musl-wheels.sh tools/data/needs-musl.txt ./wheels-musl
+sh tools/fetch-pure-wheels.sh tools/data/pure-list.txt ./wheels-pure
 ```
 
 > **注意**：两个 `-P8` 批次不要写同一个目录，会互相踩。
@@ -182,7 +186,7 @@ $CC -fPIC -O2 -Os -pipe -mcpu=cortex-a53 -fno-plt -fstack-protector -DNDEBUG \
   -Iwork/sqlite-amalg -c work/sqlite-amalg/sqlite3.c -o build/sqlite3.o
 
 # 4.5 编译 _sqlite3 的 9 个源文件并链接
-sh tools/build-sqlite3-load-extension.sh
+sh tools/build-sqlite3-load-extension.sh ~/octop-build ./out
 ```
 
 脚本已封装上述逻辑，产物为
@@ -237,7 +241,7 @@ $CC -fPIC -O2 -Os -mcpu=cortex-a53 -fno-plt -fstack-protector -DNDEBUG \
   -shared sqlite-vec.c -o vec0.so -lm
 
 # 5.4 封装成 wheel
-python3 tools/build-sqlite-vec-wheel.py vec0.so
+python3 tools/build-sqlite-vec-wheel.py vec0.so ./wheels-musl
 ```
 
 > **输出文件名必须是 `vec0.so`**：SQLite 按文件名推导入口符号

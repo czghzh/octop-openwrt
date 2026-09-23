@@ -15,17 +15,26 @@
 import base64
 import hashlib
 import os
-import shutil
+import sys
 import zipfile
 from pathlib import Path
 
-SRC_SO = Path("/home/wen/octop-cross/build-vec/vec0.so")
-OUT_DIR = Path("/home/wen/octop-cross/wheels-musl")
-OUT = OUT_DIR / "sqlite_vec-0.1.9-py3-none-any.whl"
+# 用法: python3 build-sqlite-vec-wheel.py <vec0.so> [输出目录]
+#   环境变量 VER 可覆盖版本号（默认取上游 sqlite-vec 版本）
+if len(sys.argv) < 2:
+    print("用法: python3 build-sqlite-vec-wheel.py <vec0.so 路径> [输出目录]")
+    print("  环境变量 VER=<版本号>  覆盖版本（默认 0.1.9）")
+    sys.exit(1)
+
+VER = os.environ.get("VER", "0.1.9")
+SRC_SO = Path(sys.argv[1])
+OUT_DIR = Path(sys.argv[2]) if len(sys.argv) > 2 else Path.cwd()
+OUT = OUT_DIR / f"sqlite_vec-{VER}-py3-none-any.whl"
 
 assert SRC_SO.exists(), f"找不到 {SRC_SO}，请先交叉编译 vec0.so"
 size = SRC_SO.stat().st_size
-print(f"vec0.so: {size} 字节")
+print(f"vec0.so : {SRC_SO}  ({size} 字节)")
+print(f"输出    : {OUT}")
 
 INIT_PY = '''"""Python bindings for sqlite-vec (aarch64/musl build for Octop)."""
 
@@ -104,13 +113,15 @@ amalgamation and only depends on musl libc.
 """
 
 WHEEL = """Wheel-Version: 1.0
-Generator: octop-cross-build
+Generator: octop-openwrt
 Root-Is-Purelib: true
 Tag: py3-none-any
 """
 
-VER = "0.1.9"
 dist = f"sqlite_vec-{VER}.dist-info"
+
+# METADATA 里的版本号跟随 VER
+METADATA = METADATA.replace("Version: 0.1.9", f"Version: {VER}")
 
 files = {
     "sqlite_vec/__init__.py": INIT_PY.encode(),
