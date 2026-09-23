@@ -1,0 +1,29 @@
+# 构建产物（不入库，作为 Release 附件分发）
+dist/
+*.tar.gz
+*.whl
+
+# 本地 wheel 暂存目录
+wheels/
+wheels-musl/
+wheels-pure/
+stage/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+*.o
+
+# 交叉编译工具链与源码（体积大，按 docs/BUILD.md 自行下载）
+aarch64-linux-musl-cross/
+Python-*/
+sqlite-amalgamation-*/
+
+# 编辑器 / 系统
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
