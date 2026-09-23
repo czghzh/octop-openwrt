@@ -69,7 +69,17 @@ sh install.sh
 
 ### Q1：`No space left on device`
 
-需要至少 1.1 GB 可用空间。检查：
+需要至少 **2.2 GB** 可用空间。注意 pip 的行为是：
+**先把全部 wheel 解压到临时目录，全部完成后再一次性拷到目标目录**，
+所以峰值占用约为目标目录的 2 倍：
+
+```
+临时目录  ~850 MB   (/overlay/.octop-installer/tmp/pip-install-*)
+目标目录  ~850 MB   (/overlay/octop)
+wheel 包  ~145 MB   (/overlay/.octop-installer 或 /overlay/wheelhouse)
+```
+
+检查：
 
 ```sh
 df -h /overlay

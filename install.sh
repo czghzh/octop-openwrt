@@ -55,10 +55,15 @@ WHEELHOUSE="$WORKDIR/wheels"
 PYDYNLOAD="/usr/lib/python3.14/lib-dynload"
 SQLITE_SO_NAME="_sqlite3.cpython-314-aarch64-linux-musl.so"
 
-# 本脚本所在目录（管道方式运行时为空）
+# 本脚本所在目录，用于定位随包分发的 prebuilt/ scripts/ etc/。
+#
+# 注意：`sh install.sh` 运行时 $0 是 "install.sh"（**不带斜杠**），
+# 而 `/path/to/install.sh` 运行时带斜杠 —— 两种写法都要匹配。
+# 通过管道运行时（`wget ... | sh`）$0 是 "sh"，都不匹配，此时 SCRIPT_DIR 为空，
+# 脚本会改为从 Release 下载运行时包。
 SCRIPT_DIR=""
 case "$0" in
-	*/install.sh) SCRIPT_DIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd) ;;
+	install.sh | */install.sh) SCRIPT_DIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd) ;;
 esac
 
 # ------------------------------ 输出工具 ------------------------------------
@@ -97,15 +102,19 @@ PYVER=$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')
   如需其他版本，请参考 docs/BUILD.md 自行构建 wheel"
 ok "Python $PYVER"
 
-command -v opkg >/dev/null 2>&1 || warn "未找到 opkg（非 OpenWrt 系统？继续）"
+if ! command -v opkg >/dev/null 2>&1 && ! command -v apk >/dev/null 2>&1; then
+	warn "未找到 opkg / apk（非 OpenWrt 系统？继续）"
+fi
 
-# 磁盘空间：装完约 850 MB + wheel 包 145 MB + 解压临时空间
+# 磁盘空间：pip 会先把所有 wheel 解压到临时目录，全部完成后再拷到目标目录，
+# 因此峰值约需 2 倍空间（临时 ~850 MB + 目标 ~850 MB），另加 wheel 包本身 145 MB。
 mkdir -p "$OCTOP_DATA" 2>/dev/null || true
 AVAIL_KB=$(df -k "$OCTOP_DATA" 2>/dev/null | awk 'NR==2 {print $4}')
 if [ -n "$AVAIL_KB" ]; then
-	NEED_KB=1100000
+	NEED_KB=2200000
 	if [ "$AVAIL_KB" -lt "$NEED_KB" ]; then
-		warn "可用空间 $((AVAIL_KB / 1024)) MB，建议至少 $((NEED_KB / 1024)) MB"
+		warn "可用空间 $((AVAIL_KB / 1024)) MB，低于建议值 $((NEED_KB / 1024)) MB"
+		warn "pip 解包需临时空间，空间不足可能在最后阶段失败"
 	else
 		ok "可用空间 $((AVAIL_KB / 1024)) MB"
 	fi
@@ -124,6 +133,7 @@ fi
 step 2/8 "准备 wheel 包"
 
 mkdir -p "$WORKDIR"
+info "安装包目录: ${SCRIPT_DIR:-（管道模式，将从 Release 下载）}"
 
 prepare_wheels() {
 	# 1) 环境变量显式指定
@@ -205,7 +215,13 @@ mkdir -p "$TMPDIR"
 export PIP_CACHE_DIR="$WORKDIR/pip-cache"
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 
-[ "$OCTOP_FORCE" = "1" ] && rm -rf "$OCTOP_PREFIX"
+# 清空旧安装目录。
+# 必须清空：pip 在 --target 模式下遇到已存在的同名目录只会打印警告并**跳过**，
+# 不会覆盖，导致重装时「装了等于没装」。数据在 $OCTOP_DATA/.octop 不受影响。
+if [ -d "$OCTOP_PREFIX" ] && [ -n "$(ls -A "$OCTOP_PREFIX" 2>/dev/null)" ]; then
+	info "清空已有安装目录 $OCTOP_PREFIX（数据目录 .octop 不受影响）"
+	rm -rf "$OCTOP_PREFIX"
+fi
 mkdir -p "$OCTOP_PREFIX"
 
 info "离线批量解包（--no-index --no-deps，不做依赖求解）"
@@ -214,6 +230,7 @@ info "离线批量解包（--no-index --no-deps，不做依赖求解）"
 python3 -m pip install \
 	--no-index \
 	--no-deps \
+	--upgrade \
 	--target "$OCTOP_PREFIX" \
 	--disable-pip-version-check \
 	--quiet \
@@ -252,12 +269,12 @@ if [ -n "$SO_SRC" ]; then
 	elif [ -f "$SO_DST.orig" ]; then
 		info "原模块备份已存在，保留不动"
 		cp -f "$SO_SRC" "$SO_DST" && chmod 755 "$SO_DST"
-		ok "已更新增强模块（$(stat -c%s "$SO_DST") 字节）"
+		ok "已更新增强模块（$(wc -c < "$SO_DST") 字节）"
 	else
 		cp -f "$SO_DST" "$SO_DST.orig"
-		ok "已备份原模块 → $(basename "$SO_DST").orig（$(stat -c%s "$SO_DST.orig") 字节）"
+		ok "已备份原模块 → $(basename "$SO_DST").orig（$(wc -c < "$SO_DST.orig") 字节）"
 		cp -f "$SO_SRC" "$SO_DST" && chmod 755 "$SO_DST"
-		ok "已部署增强模块（$(stat -c%s "$SO_DST") 字节）"
+		ok "已部署增强模块（$(wc -c < "$SO_DST") 字节）"
 	fi
 
 	# 校验
@@ -304,7 +321,9 @@ for _base in "$SCRIPT_DIR" "$WORKDIR"; do
 	SCRIPT_SRC=$(find "$_base" -maxdepth 5 -name "start-octop.sh" 2>/dev/null | head -1)
 	[ -n "$SCRIPT_SRC" ] && break
 done
-[ -n "$SCRIPT_SRC" ] || die "找不到 start-octop.sh（安装包不完整？）"
+[ -n "$SCRIPT_SRC" ] || die "找不到 start-octop.sh。
+  如果是以管道方式运行（wget ... | sh），脚本需要先从 Release 下载运行时包；
+  请确认网络可用，或改为：下载 Release 里的 runtime 包 → 解压 → 进入目录运行 sh install.sh"
 
 # 写入安装目录定制后的默认值，使手动启动与服务启动行为一致
 sed \

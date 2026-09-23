@@ -100,7 +100,7 @@ OCTOP_ADMIN_USER=me OCTOP_PORT=9000 sh install.sh
 | 架构 | `aarch64`（ARMv8） |
 | libc | musl（OpenWrt / ImmortalWrt 默认） |
 | Python | **3.14**（wheel 是针对 cp314 构建的） |
-| 可用存储 | **≥ 1.1 GB**（安装后约 850 MB + 依赖包 145 MB） |
+| 可用存储 | **≥ 2.2 GB**（pip 解包峰值 = 临时 ~850 MB + 目标 ~850 MB + wheel 包 145 MB） |
 | 内存 | **≥ 480 MB**（运行期约占用 280~320 MB） |
 | 权限 | root |
 
